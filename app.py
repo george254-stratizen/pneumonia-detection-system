@@ -49,7 +49,10 @@ if user is None:
 else:
     pages = [st.Page("pages/dashboard.py", title="Dashboard", icon="🏠", default=True)]
     if user["role"] == ADMIN:
-        pass  # admin pages (user management, system logs) are added in a later step
+        pages += [
+            st.Page("pages/users.py", title="User Management", icon="👥"),
+            st.Page("pages/logs.py", title="System Logs", icon="📜"),
+        ]
     with st.sidebar:
         st.write(f"**{user['name']}**")
         st.caption(user["role"])

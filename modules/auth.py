@@ -79,3 +79,55 @@ def authenticate(email, password, db_path=DB_PATH):
             "name": f"{row['first_name']} {row['last_name']}",
             "email": row["email"],
             "role": row["role_name"]}
+
+
+# ---------- admin helpers ----------
+
+def list_users(db_path=DB_PATH):
+    conn = get_connection(db_path)
+    try:
+        return [dict(r) for r in conn.execute(
+            "SELECT u.user_id, u.first_name, u.last_name, u.email, u.phone_no, "
+            "r.role_name, u.is_active, hp.license_number, hp.profession, hp.department "
+            "FROM user u JOIN role r ON r.role_id = u.role_id "
+            "LEFT JOIN healthcare_provider hp ON hp.user_id = u.user_id "
+            "ORDER BY u.user_id")]
+    finally:
+        conn.close()
+
+
+def set_user_active(user_id, active, acting_user_id, db_path=DB_PATH):
+    """Activates/deactivates a user. An admin cannot deactivate their own account."""
+    if user_id == acting_user_id and not active:
+        raise ValueError("You cannot deactivate your own account.")
+    conn = get_connection(db_path)
+    try:
+        cur = conn.execute("UPDATE user SET is_active = ? WHERE user_id = ?",
+                           (1 if active else 0, user_id))
+        if cur.rowcount == 0:
+            raise ValueError("User not found.")
+        conn.commit()
+    finally:
+        conn.close()
+    log_action("ACTIVATE_USER" if active else "DEACTIVATE_USER",
+               f"User {user_id}", acting_user_id, db_path)
+
+
+def get_logs(limit=200, db_path=DB_PATH):
+    """Latest log entries, newest first, with Nairobi-time stamps."""
+    from modules.database import to_nairobi
+    conn = get_connection(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT l.log_id, l.date_time, l.action, l.description, "
+            "COALESCE(u.email, '-') AS user_email "
+            "FROM system_log l LEFT JOIN user u ON u.user_id = l.user_id "
+            "ORDER BY l.log_id DESC LIMIT ?", (limit,)).fetchall()
+    finally:
+        conn.close()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["date_time"] = to_nairobi(d["date_time"])
+        out.append(d)
+    return out

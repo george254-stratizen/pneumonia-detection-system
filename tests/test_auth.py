@@ -54,3 +54,30 @@ def test_logins_are_logged(path):
     actions = {r[0] for r in c.execute("SELECT action FROM system_log")}
     c.close()
     assert {"LOGIN", "LOGIN_FAILED", "CREATE_USER"} <= actions
+
+
+from modules.auth import list_users, set_user_active, get_logs
+
+
+def test_admin_deactivate_and_reactivate(path):
+    admin = create_user("Ann", "Admin", "ann@x.com", "password1", ADMIN, db_path=path)
+    jo = create_user("Jo", "Doc", "jo@x.com", "password1", PROVIDER, db_path=path)
+    set_user_active(jo, False, admin, db_path=path)
+    assert authenticate("jo@x.com", "password1", db_path=path) is None
+    set_user_active(jo, True, admin, db_path=path)
+    assert authenticate("jo@x.com", "password1", db_path=path) is not None
+
+
+def test_admin_cannot_deactivate_self(path):
+    admin = create_user("Ann", "Admin", "ann@x.com", "password1", ADMIN, db_path=path)
+    with pytest.raises(ValueError):
+        set_user_active(admin, False, admin, db_path=path)
+
+
+def test_list_users_and_logs(path):
+    create_user("Ann", "Admin", "ann@x.com", "password1", ADMIN, db_path=path)
+    create_user("Jo", "Doc", "jo@x.com", "password1", PROVIDER, department="ER", db_path=path)
+    users = list_users(db_path=path)
+    assert len(users) == 2 and users[1]["department"] == "ER"
+    logs = get_logs(db_path=path)
+    assert logs[0]["action"] == "CREATE_USER" and logs[0]["date_time"]

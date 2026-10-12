@@ -3,6 +3,13 @@ app.py - entry point.  Run with:  streamlit run app.py
 Shows the login screen; after login shows only the pages allowed for the user's role.
 """
 
+import os
+
+# Limit math-library threads BEFORE numpy/torch load (avoids "OpenBLAS memory allocation failed"
+# on low-memory machines).
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+
 import sys
 from pathlib import Path
 
@@ -52,6 +59,11 @@ else:
         pages += [
             st.Page("pages/users.py", title="User Management", icon="👥"),
             st.Page("pages/logs.py", title="System Logs", icon="📜"),
+        ]
+    else:
+        pages += [
+            st.Page("pages/patient_management.py", title="Patients", icon="🧑‍⚕️"),
+            st.Page("pages/upload_xray.py", title="Upload X-ray", icon="🩻"),
         ]
     with st.sidebar:
         st.write(f"**{user['name']}**")

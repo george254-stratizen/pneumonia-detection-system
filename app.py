@@ -64,6 +64,7 @@ else:
         pages += [
             st.Page("pages/patient_management.py", title="Patients", icon="🧑‍⚕️"),
             st.Page("pages/upload_xray.py", title="Upload X-ray", icon="🩻"),
+            st.Page("pages/history.py", title="Patient History", icon="🗂️"),
         ]
     with st.sidebar:
         st.write(f"**{user['name']}**")

@@ -2,6 +2,7 @@ import streamlit as st
 
 from modules.analysis import analyze_xray
 from modules.patients import age_text, get_patient, search_patients
+from modules.ui import render_result_detail
 
 user = st.session_state["user"]
 st.title("🩻 Upload X-ray & Analyse")
@@ -44,17 +45,4 @@ if st.button("Analyse X-ray", type="primary", disabled=file is None):
 r = st.session_state.get("last_result")
 if r and r["patient_id"] == patient["patient_id"]:
     st.divider()
-    if r["label"] == "PNEUMONIA":
-        st.error(f"### Prediction: PNEUMONIA ({r['confidence']:.1%} confidence)")
-    else:
-        st.success(f"### Prediction: NORMAL ({r['confidence']:.1%} confidence)")
-    if r["low_confidence"]:
-        st.warning("Low confidence. Review this image carefully and consider a repeat X-ray or specialist opinion.")
-
-    c1, c2, c3 = st.columns(3)
-    c1.image(str(r["original_path"]), caption="Original")
-    c2.image(str(r["processed_path"]), caption="After CLAHE")
-    c3.image(str(r["heatmap_path"]), caption="Grad-CAM")
-    st.caption("The heatmap shows where the model looked. It is not a confirmed lesion location "
-               "and can highlight areas outside the lungs.")
-    st.info(f"Saved as result #{r['result_id']}. The clinical diagnosis is recorded in the next step.")
+    render_result_detail(r["result_id"], user)

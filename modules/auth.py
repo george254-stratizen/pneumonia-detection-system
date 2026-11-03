@@ -6,6 +6,8 @@ Kept free of Streamlit code so it can be unit-tested.
 """
 
 from modules.database import DB_PATH, GENDERS, get_connection, hash_password, verify_password
+from modules.validation import (email_error, name_error, password_error, phone_error,
+                                raise_if_errors, text_error)
 
 ADMIN = "Administrator"
 PROVIDER = "Healthcare Provider"
@@ -27,11 +29,18 @@ def create_user(first_name, last_name, email, password, role_name,
                 phone_no=None, gender=None, license_number=None, profession=None,
                 department=None, db_path=DB_PATH):
     """Creates a user (and the matching admin / healthcare_provider row). Returns user_id."""
+    raise_if_errors([
+        name_error(first_name, "First name"),
+        name_error(last_name, "Last name"),
+        email_error(email),
+        phone_error(phone_no),
+        password_error(password),
+        None if gender is None or gender in GENDERS else "Gender must be Female, Male or Other.",
+        text_error(department, "Department", 100),
+    ])
+    first_name, last_name = first_name.strip(), last_name.strip()
     email = email.strip().lower()
-    if len(password) < 8:
-        raise ValueError("Password must be at least 8 characters.")
-    if gender is not None and gender not in GENDERS:
-        raise ValueError("Gender must be Female, Male or Other.")
+    phone_no = (phone_no or "").strip() or None
     conn = get_connection(db_path)
     try:
         role = conn.execute("SELECT role_id FROM role WHERE role_name = ?", (role_name,)).fetchone()

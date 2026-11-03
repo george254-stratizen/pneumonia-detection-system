@@ -51,7 +51,7 @@ def test_validation(ctx):
 def test_update_patient(ctx):
     p, uid = ctx
     pid, _ = register_patient(uid, "Amina", "Otieno", "2022-03-01", "Female", db_path=p)
-    update_patient(pid, uid, "Amina", "Odhiambo", "2022-03-01", "Female", "0700", "Kisumu", db_path=p)
+    update_patient(pid, uid, "Amina", "Odhiambo", "2022-03-01", "Female", "0700123456", "Kisumu", db_path=p)
     got = get_patient(pid, db_path=p)
     assert got["last_name"] == "Odhiambo" and got["address"] == "Kisumu"
     with pytest.raises(ValueError):

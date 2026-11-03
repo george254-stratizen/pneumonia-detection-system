@@ -21,14 +21,12 @@ with st.expander("➕ Add user", expanded=False):
         first = c1.text_input("First name")
         last = c2.text_input("Last name")
         gender = c1.selectbox("Gender", ["Select..."] + GENDERS)
-        phone = c2.text_input("Phone")
-        email = c1.text_input("Email")
+        phone = c2.text_input("Phone (10 digits)", max_chars=10, placeholder="0712345678")
+        email = c1.text_input("Email", placeholder="name@example.com")
         password = c2.text_input("Temporary password (min 8 chars)", type="password")
         department = c1.text_input("Department (optional)") if role == PROVIDER else None
         if st.form_submit_button("Create account", type="primary"):
-            if not (first.strip() and last.strip() and email.strip() and password):
-                st.error("First name, last name, email and password are required.")
-            elif gender == "Select...":
+            if gender == "Select...":
                 st.error("Please select a gender.")
             else:
                 try:

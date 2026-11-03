@@ -9,24 +9,26 @@ from datetime import date, datetime
 
 from modules.auth import log_action
 from modules.database import DB_PATH, GENDERS, get_connection
+from modules.validation import name_error, phone_error, raise_if_errors, text_error
 
 
-def _validate(first_name, last_name, date_of_birth, gender):
-    if not first_name.strip() or not last_name.strip():
-        raise ValueError("First and last name are required.")
-    if gender not in GENDERS:
-        raise ValueError("Please select a gender.")
+def _validate(first_name, last_name, date_of_birth, gender, phone_no=None, address=None):
+    errors = [name_error(first_name, "First name"), name_error(last_name, "Last name"),
+              None if gender in GENDERS else "Please select a gender.",
+              phone_error(phone_no), text_error(address, "Address", 200)]
     if date_of_birth is not None:
         dob = date_of_birth if isinstance(date_of_birth, date) else \
             datetime.strptime(str(date_of_birth), "%Y-%m-%d").date()
         if dob > date.today():
-            raise ValueError("Date of birth cannot be in the future.")
+            errors.append("Date of birth cannot be in the future.")
+    raise_if_errors(errors)
 
 
 def register_patient(provider_id, first_name, last_name, date_of_birth, gender,
                      phone_no=None, address=None, db_path=DB_PATH):
     """Adds a patient and gives them a number like PT-00007. Returns (patient_id, patient_number)."""
-    _validate(first_name, last_name, date_of_birth, gender)
+    _validate(first_name, last_name, date_of_birth, gender, phone_no, address)
+    phone_no = (phone_no or "").strip() or None
     conn = get_connection(db_path)
     try:
         cur = conn.execute(
@@ -69,7 +71,8 @@ def get_patient(patient_id, db_path=DB_PATH):
 
 def update_patient(patient_id, acting_user_id, first_name, last_name, date_of_birth,
                    gender, phone_no=None, address=None, db_path=DB_PATH):
-    _validate(first_name, last_name, date_of_birth, gender)
+    _validate(first_name, last_name, date_of_birth, gender, phone_no, address)
+    phone_no = (phone_no or "").strip() or None
     conn = get_connection(db_path)
     try:
         cur = conn.execute(

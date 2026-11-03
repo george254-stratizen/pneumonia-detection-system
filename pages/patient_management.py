@@ -20,7 +20,7 @@ with tab_new:
         dob = c1.date_input("Date of birth", value=None, min_value=date(1900, 1, 1),
                             max_value=date.today(), format="YYYY-MM-DD")
         gender = c2.selectbox("Gender", ["Select..."] + GENDERS)
-        phone = c1.text_input("Phone")
+        phone = c1.text_input("Phone (10 digits)", max_chars=10, placeholder="0712345678")
         address = c2.text_input("Address")
         if st.form_submit_button("Register patient", type="primary"):
             try:
@@ -57,7 +57,7 @@ with tab_search:
                                 min_value=date(1900, 1, 1), max_value=date.today(), format="YYYY-MM-DD")
             gender = c2.selectbox("Gender", GENDERS,
                                   index=GENDERS.index(p["gender"]) if p["gender"] in GENDERS else 0)
-            phone = c1.text_input("Phone", p["phone_no"] or "")
+            phone = c1.text_input("Phone (10 digits)", p["phone_no"] or "", max_chars=10)
             address = c2.text_input("Address", p["address"] or "")
             if st.form_submit_button("Save changes", type="primary"):
                 try:

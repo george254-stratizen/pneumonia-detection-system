@@ -40,7 +40,7 @@ df = pd.DataFrame(users)
 df["status"] = df["is_active"].map({1: "Active", 0: "Inactive"})
 df["name"] = df["first_name"] + " " + df["last_name"]
 st.dataframe(df[["user_id", "name", "email", "role_name", "department", "status"]],
-             hide_index=True, use_container_width=True)
+             hide_index=True, width="stretch")
 
 # ---- activate / deactivate ----
 st.subheader("Activate / deactivate")

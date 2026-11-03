@@ -54,7 +54,7 @@ def test_full_pipeline_saves_everything(ctx):
     db, uid, pid, up = ctx
     r = analyze_xray(pid, uid, png_bytes(), "scan.png", FakeEngine(), db_path=db, upload_dir=up)
     assert r["label"] == "PNEUMONIA" and r["confidence"] == 0.9 and not r["low_confidence"]
-    for t in ("x_ray_image", "processing_module", "result", "grad_cam_heatmap"):
+    for t in ("x_ray_image", "processing_module", "result", "grad_cam_heatmap", "diagnosis_record"):
         assert count(db, t) == 1
     assert r["original_path"].exists() and r["processed_path"].exists() and r["heatmap_path"].exists()
 
@@ -87,6 +87,6 @@ def test_failure_midway_leaves_nothing_behind(ctx):
     with pytest.raises(RuntimeError):
         analyze_xray(pid, uid, png_bytes(), "s.png", FakeEngine(fail_at="gradcam"),
                      db_path=db, upload_dir=up)
-    for t in ("x_ray_image", "processing_module", "result", "grad_cam_heatmap"):
+    for t in ("x_ray_image", "processing_module", "result", "grad_cam_heatmap", "diagnosis_record"):
         assert count(db, t) == 0
     assert not any(p.is_file() for p in up.rglob("*"))

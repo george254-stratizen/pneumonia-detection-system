@@ -23,12 +23,11 @@ if not history:
     st.stop()
 
 df = pd.DataFrame(history)
-df["AI"] = df["prediction"] + " (" + (df["confidence"] * 100).round(1).astype(str) + "%)"
-df["Final"] = df["final_diagnosis"].fillna("Pending")
-df["Match"] = df["agreed"].map({True: "Agrees", False: "Differs"}).fillna("-")
-st.dataframe(df[["result_id", "date", "AI", "Final", "Match"]].rename(
+df["Diagnosis"] = df["final_diagnosis"].fillna(df["prediction"])
+df["Confidence"] = (df["confidence"] * 100).round(1).astype(str) + "%"
+st.dataframe(df[["result_id", "date", "Diagnosis", "Confidence"]].rename(
     columns={"result_id": "Result", "date": "Date (EAT)"}),
-    hide_index=True, use_container_width=True)
+    hide_index=True, width="stretch")
 
 rid = st.selectbox("Open result", [h["result_id"] for h in history])
 st.divider()

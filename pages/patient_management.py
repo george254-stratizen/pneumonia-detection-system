@@ -41,7 +41,7 @@ with tab_search:
         df["name"] = df["first_name"] + " " + df["last_name"]
         df["age"] = df["date_of_birth"].map(age_text)
         st.dataframe(df[["patient_number", "name", "age", "gender", "phone_no"]],
-                     hide_index=True, use_container_width=True)
+                     hide_index=True, width="stretch")
 
         st.subheader("Edit patient")
         labels = {f"{r['patient_number']} - {r['first_name']} {r['last_name']}": r["patient_id"]

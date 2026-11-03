@@ -1,14 +1,11 @@
 """
 results.py
 
-Reading saved results, recording the clinician's final diagnosis (confirm / override),
-and patient history. No Streamlit code, so it can be unit-tested.
+Reading saved results and patient history. The diagnosis is recorded automatically
+when an X-ray is analysed (see analysis.py). No Streamlit code, so it can be unit-tested.
 """
 
-from modules.auth import log_action
 from modules.database import DB_PATH, get_connection, to_nairobi
-
-FINAL_OPTIONS = ["PNEUMONIA", "NORMAL", "OTHER"]
 
 _DETAIL_SQL = """
 SELECT r.result_id, r.patient_id, r.prediction, r.probability, r.confidence, r.date,
@@ -36,8 +33,6 @@ def _finish(row):
     d["upload_date"] = to_nairobi(d["upload_date"])
     if d["diagnosis_date"]:
         d["diagnosis_date"] = to_nairobi(d["diagnosis_date"])
-    d["agreed"] = (None if d["final_diagnosis"] is None
-                   else d["final_diagnosis"] == d["prediction"])
     return d
 
 
@@ -60,39 +55,3 @@ def patient_history(patient_id, db_path=DB_PATH):
     finally:
         conn.close()
     return [_finish(r) for r in rows]
-
-
-def save_diagnosis(result_id, provider_id, final_diagnosis, notes="", db_path=DB_PATH):
-    """Records (or updates) the provider's final diagnosis for a result.
-    Returns True if it agrees with the AI, False if it overrides it."""
-    if final_diagnosis not in FINAL_OPTIONS:
-        raise ValueError("Please choose a final diagnosis.")
-    conn = get_connection(db_path)
-    try:
-        res = conn.execute("SELECT patient_id, prediction FROM result WHERE result_id = ?",
-                           (result_id,)).fetchone()
-        if res is None:
-            raise ValueError("Result not found.")
-        if conn.execute("SELECT 1 FROM healthcare_provider WHERE user_id = ?",
-                        (provider_id,)).fetchone() is None:
-            raise ValueError("Only healthcare providers can record a diagnosis.")
-        existing = conn.execute("SELECT diagnosis_id FROM diagnosis_record WHERE result_id = ?",
-                                (result_id,)).fetchone()
-        if existing:
-            conn.execute(
-                "UPDATE diagnosis_record SET provider_id=?, final_diagnosis=?, diagnosis_notes=?, "
-                "diagnosis_date=CURRENT_TIMESTAMP WHERE diagnosis_id=?",
-                (provider_id, final_diagnosis, notes or None, existing["diagnosis_id"]))
-        else:
-            conn.execute(
-                "INSERT INTO diagnosis_record (patient_id, result_id, provider_id, "
-                "final_diagnosis, diagnosis_notes) VALUES (?, ?, ?, ?, ?)",
-                (res["patient_id"], result_id, provider_id, final_diagnosis, notes or None))
-        conn.commit()
-    finally:
-        conn.close()
-    agreed = final_diagnosis == res["prediction"]
-    log_action("CONFIRM_DIAGNOSIS" if agreed else "OVERRIDE_DIAGNOSIS",
-               f"Result {result_id}: AI {res['prediction']} -> final {final_diagnosis}",
-               provider_id, db_path)
-    return agreed

@@ -1,7 +1,7 @@
 """
 report.py
 
-Builds a one-result PDF report (patient, AI output, images, clinician diagnosis).
+Builds a one-result PDF report (patient, AI result, images, diagnosis).
 """
 
 import io
@@ -17,7 +17,9 @@ from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Tabl
 from modules.analysis import ROOT
 from modules.patients import age_text
 
-DISCLAIMER = ("This report was produced with AI decision support. ")
+DISCLAIMER = ("This diagnosis was produced by an AI decision-support system. The model was trained "
+              "on paediatric chest X-rays (ages 1-5) from a single hospital and has not been "
+              "externally validated.")
 
 
 def _img(path, caption, styles, width=5.3 * cm):
@@ -76,25 +78,27 @@ def build_pdf(detail: dict, generated_by: str) -> bytes:
         ["Analysed", d["date"]],
     ]))
     if d["confidence"] < 0.70:
-        story.append(Paragraph("<b>Low confidence result. Review carefully.</b>", styles["Body"]))
+        story.append(Paragraph("<b>Low confidence result.</b>", styles["Body"]))
 
+    normal = d["prediction"] == "NORMAL"
     cells = [_img(d["file_path"], "Original", styles),
              _img(d["processed_image_path"], "After CLAHE", styles),
-             _img(d["heatmap_path"], "Grad-CAM", styles)]
+             _img(d["heatmap_path"], "Grad-CAM (influence on NORMAL)" if normal else "Grad-CAM", styles)]
     story += [Spacer(1, 8), Table([cells], colWidths=[5.7 * cm] * 3)]
-    story.append(Paragraph("The heatmap shows where the model looked; it is not a confirmed "
-                           "lesion location.", styles["Disc"]))
+    story.append(Paragraph(
+        "The heatmap shows what influenced the NORMAL prediction; it does not indicate disease."
+        if normal else
+        "The heatmap shows where the model looked; it is not a confirmed lesion location.",
+        styles["Disc"]))
 
-    story.append(Paragraph("Clinician diagnosis", styles["H"]))
+    story.append(Paragraph("Diagnosis", styles["H"]))
     if d["final_diagnosis"]:
-        verdict = "Agrees with AI" if d["agreed"] else "Differs from AI"
         story.append(table([
-            ["Final diagnosis", f"{d['final_diagnosis']}  ({verdict})"],
+            ["Final diagnosis", d["final_diagnosis"]],
             ["Recorded by", f"{d['diagnosed_by']} on {d['diagnosis_date']}"],
-            ["Notes", d["diagnosis_notes"] or "-"],
         ]))
     else:
-        story.append(Paragraph("Not yet recorded by a clinician.", styles["Body"]))
+        story.append(table([["Final diagnosis", d["prediction"]]]))
 
     story += [Spacer(1, 14), Paragraph(DISCLAIMER, styles["Disc"])]
     doc.build(story)

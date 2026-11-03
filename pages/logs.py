@@ -16,4 +16,4 @@ else:
     if pick != "All":
         df = df[df["action"] == pick]
     st.dataframe(df[["date_time", "user_email", "action", "description"]],
-                 hide_index=True, use_container_width=True)
+                 hide_index=True, width="stretch")

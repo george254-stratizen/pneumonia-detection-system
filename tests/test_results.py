@@ -8,11 +8,11 @@ from PIL import Image
 
 import modules.analysis as analysis
 from modules.analysis import analyze_xray
-from modules.auth import create_user, ADMIN, PROVIDER
+from modules.auth import create_user, PROVIDER
 from modules.database import init_db
 from modules.patients import register_patient
 from modules.report import build_pdf
-from modules.results import get_result, patient_history, save_diagnosis
+from modules.results import get_result, patient_history
 
 
 class FakeEngine:
@@ -43,54 +43,37 @@ def ctx(tmp_path, monkeypatch):
     db = tmp_path / "t.db"
     init_db(db)
     uid = create_user("Jo", "Doc", "jo@x.com", "password1", PROVIDER, db_path=db)
-    adm = create_user("Ann", "Admin", "a@x.com", "password1", ADMIN, db_path=db)
     pid, _ = register_patient(uid, "Amina", "Otieno", "2022-03-01", "Female", db_path=db)
     r = analyze_xray(pid, uid, png(), "s.png", FakeEngine(), db_path=db, upload_dir=tmp_path / "uploads")
-    return db, uid, adm, pid, r["result_id"]
+    return db, uid, pid, r["result_id"], tmp_path
 
 
-def test_get_result_has_everything(ctx):
-    db, uid, adm, pid, rid = ctx
+def test_diagnosis_is_recorded_automatically(ctx):
+    db, uid, pid, rid, _ = ctx
     d = get_result(rid, db_path=db)
-    assert d["prediction"] == "PNEUMONIA" and d["patient_number"].startswith("PT-")
-    assert d["heatmap_path"] and d["processed_image_path"] and d["final_diagnosis"] is None
+    assert d["prediction"] == "PNEUMONIA"
+    assert d["final_diagnosis"] == "PNEUMONIA" and d["diagnosed_by"] == "Jo Doc"
+    assert d["heatmap_path"] and d["processed_image_path"] and d["patient_number"].startswith("PT-")
     assert get_result(999, db_path=db) is None
 
 
-def test_confirm_then_override(ctx):
-    db, uid, adm, pid, rid = ctx
-    assert save_diagnosis(rid, uid, "PNEUMONIA", "cough 3 days", db_path=db) is True
-    d = get_result(rid, db_path=db)
-    assert d["agreed"] is True and d["diagnosed_by"] == "Jo Doc"
-    assert save_diagnosis(rid, uid, "NORMAL", "re-read", db_path=db) is False
-    d = get_result(rid, db_path=db)
-    assert d["final_diagnosis"] == "NORMAL" and d["agreed"] is False
-    assert len(patient_history(pid, db_path=db)) == 1       # updated, not duplicated
+def test_normal_result_is_recorded_as_normal(ctx):
+    db, uid, pid, rid, tmp = ctx
+    r2 = analyze_xray(pid, uid, png(), "n.png", FakeEngine("NORMAL", 0.8), db_path=db, upload_dir=tmp / "uploads")
+    assert get_result(r2["result_id"], db_path=db)["final_diagnosis"] == "NORMAL"
 
 
-def test_diagnosis_validation(ctx):
-    db, uid, adm, pid, rid = ctx
-    with pytest.raises(ValueError):
-        save_diagnosis(rid, uid, "BANANA", db_path=db)
-    with pytest.raises(ValueError):
-        save_diagnosis(rid, adm, "NORMAL", db_path=db)       # admins can't diagnose
-    with pytest.raises(ValueError):
-        save_diagnosis(999, uid, "NORMAL", db_path=db)
-
-
-def test_history_newest_first(ctx, tmp_path):
-    db, uid, adm, pid, rid = ctx
-    r2 = analyze_xray(pid, uid, png(), "s2.png", FakeEngine("NORMAL", 0.8),
-                      db_path=db, upload_dir=tmp_path / "uploads")
+def test_history_newest_first_one_diagnosis_each(ctx):
+    db, uid, pid, rid, tmp = ctx
+    r2 = analyze_xray(pid, uid, png(), "s2.png", FakeEngine("NORMAL", 0.8), db_path=db, upload_dir=tmp / "uploads")
     h = patient_history(pid, db_path=db)
     assert [x["result_id"] for x in h] == [r2["result_id"], rid]
+    assert all(x["final_diagnosis"] for x in h)
 
 
-def test_pdf_report(ctx):
-    db, uid, adm, pid, rid = ctx
-    save_diagnosis(rid, uid, "PNEUMONIA", "notes here", db_path=db)
-    pdf = build_pdf(get_result(rid, db_path=db), "Jo Doc")
+@pytest.mark.parametrize("label", ["PNEUMONIA", "NORMAL"])
+def test_pdf_report(ctx, label):
+    db, uid, pid, rid, tmp = ctx
+    r = analyze_xray(pid, uid, png(), "x.png", FakeEngine(label, 0.9), db_path=db, upload_dir=tmp / "uploads")
+    pdf = build_pdf(get_result(r["result_id"], db_path=db), "Jo Doc")
     assert pdf.startswith(b"%PDF") and len(pdf) > 3000
-    # also works before any diagnosis exists
-    r2 = ctx  # reuse fixture data
-    assert build_pdf({**get_result(rid, db_path=db), "final_diagnosis": None, "agreed": None}, "Jo")

@@ -18,7 +18,7 @@ sys.path.append(str(Path(__file__).resolve().parent))
 import streamlit as st
 
 from modules.auth import ADMIN, authenticate, log_action
-from modules.database import init_db
+from modules.database import DB_PATH, init_db
 
 st.set_page_config(page_title="Pneumonia Detection System", page_icon="🫁", layout="centered")
 init_db()
@@ -26,7 +26,7 @@ init_db()
 
 def login_page():
     st.title("🫁 Pneumonia Detection System")
-    st.caption("AI decision support for chest X-rays. Not a substitute for clinical judgement.")
+    st.caption("AI-assisted chest X-ray analysis for healthcare providers.")
     with st.form("login"):
         email = st.text_input("Email")
         password = st.text_input("Password", type="password")
@@ -69,5 +69,7 @@ else:
     with st.sidebar:
         st.write(f"**{user['name']}**")
         st.caption(user["role"])
+        if DB_PATH.name.startswith("demo"):
+            st.warning("DEMO DATA")
         st.button("Log out", on_click=logout)
     st.navigation(pages).run()

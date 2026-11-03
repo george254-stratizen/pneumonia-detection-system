@@ -11,7 +11,11 @@ import os
 import sqlite3
 from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parents[1] / "data" / "pneumonia.db"
+_ROOT = Path(__file__).resolve().parents[1]
+# Normally data/pneumonia.db. Set the PNEUMONIA_DB environment variable to use another file
+# (e.g. data/demo.db for the defence demo) without touching the real database.
+_override = os.environ.get("PNEUMONIA_DB")
+DB_PATH = (_ROOT / _override) if _override else _ROOT / "data" / "pneumonia.db"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS role (

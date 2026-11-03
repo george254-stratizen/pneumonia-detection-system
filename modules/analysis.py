@@ -118,6 +118,9 @@ def analyze_xray(patient_id, user_id, file_bytes, original_name, engine,
         saved.append(heatmap)
         conn.execute("INSERT INTO grad_cam_heatmap (result_id, heatmap_path) VALUES (?, ?)",
                      (result_id, _rel(heatmap)))
+        # The system records its result as the diagnosis of record (no second confirmation step).
+        conn.execute("INSERT INTO diagnosis_record (patient_id, result_id, provider_id, final_diagnosis) "
+                     "VALUES (?, ?, ?, ?)", (patient_id, result_id, user_id, label))
         conn.commit()
     except Exception:
         conn.rollback()

@@ -6,7 +6,7 @@ from modules.ui import render_result_detail
 
 user = st.session_state["user"]
 st.title("🩻 Upload X-ray & Analyse")
-st.caption("AI decision support. The result is a second opinion, not a diagnosis.")
+st.caption("Upload a chest X-ray to analyse it. The result is saved automatically.")
 
 
 @st.cache_resource(show_spinner="Loading AI model...")

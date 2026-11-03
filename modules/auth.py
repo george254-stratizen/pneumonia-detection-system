@@ -5,7 +5,7 @@ Login logic, user creation and activity logging.
 Kept free of Streamlit code so it can be unit-tested.
 """
 
-from modules.database import DB_PATH, get_connection, hash_password, verify_password
+from modules.database import DB_PATH, GENDERS, get_connection, hash_password, verify_password
 
 ADMIN = "Administrator"
 PROVIDER = "Healthcare Provider"
@@ -24,21 +24,23 @@ def log_action(action, description="", user_id=None, db_path=DB_PATH):
 
 
 def create_user(first_name, last_name, email, password, role_name,
-                phone_no=None, license_number=None, profession=None,
+                phone_no=None, gender=None, license_number=None, profession=None,
                 department=None, db_path=DB_PATH):
     """Creates a user (and the matching admin / healthcare_provider row). Returns user_id."""
     email = email.strip().lower()
     if len(password) < 8:
         raise ValueError("Password must be at least 8 characters.")
+    if gender is not None and gender not in GENDERS:
+        raise ValueError("Gender must be Female, Male or Other.")
     conn = get_connection(db_path)
     try:
         role = conn.execute("SELECT role_id FROM role WHERE role_name = ?", (role_name,)).fetchone()
         if role is None:
             raise ValueError(f"Unknown role: {role_name}")
         cur = conn.execute(
-            "INSERT INTO user (role_id, first_name, last_name, email, password, phone_no) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (role["role_id"], first_name, last_name, email, hash_password(password), phone_no),
+            "INSERT INTO user (role_id, first_name, last_name, gender, email, password, phone_no) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (role["role_id"], first_name, last_name, gender, email, hash_password(password), phone_no),
         )
         uid = cur.lastrowid
         if role_name == ADMIN:
@@ -87,8 +89,8 @@ def list_users(db_path=DB_PATH):
     conn = get_connection(db_path)
     try:
         return [dict(r) for r in conn.execute(
-            "SELECT u.user_id, u.first_name, u.last_name, u.email, u.phone_no, "
-            "r.role_name, u.is_active, hp.license_number, hp.profession, hp.department "
+            "SELECT u.user_id, u.first_name, u.last_name, u.gender, u.email, u.phone_no, "
+            "r.role_name, u.is_active, hp.department "
             "FROM user u JOIN role r ON r.role_id = u.role_id "
             "LEFT JOIN healthcare_provider hp ON hp.user_id = u.user_id "
             "ORDER BY u.user_id")]

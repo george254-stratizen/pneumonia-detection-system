@@ -101,3 +101,28 @@ def test_full_workflow(db):
 
 def test_to_nairobi():
     assert to_nairobi("2026-01-01 22:30:00") == "2026-01-02 01:30:00"
+
+
+def test_user_has_gender_column(db):
+    cols = {r["name"] for r in db.execute("PRAGMA table_info(user)")}
+    assert "gender" in cols
+    with pytest.raises(sqlite3.IntegrityError):
+        db.execute("INSERT INTO user (role_id, first_name, last_name, gender, email, password) "
+                   "VALUES (1, 'A', 'B', 'Robot', 'r@x.com', 'x')")
+
+
+def test_old_database_is_upgraded_in_place(tmp_path):
+    """A database made before the gender column existed gets it added, keeping its users."""
+    path = tmp_path / "old.db"
+    init_db(path)
+    c = get_connection(path)
+    c.execute("INSERT INTO user (role_id, first_name, last_name, email, password) "
+              "VALUES (1, 'Old', 'User', 'old@x.com', 'x')")
+    c.commit()
+    c.execute("ALTER TABLE user DROP COLUMN gender")        # simulate the old schema
+    c.commit(); c.close()
+    init_db(path)                                           # upgrade
+    c = get_connection(path)
+    assert "gender" in {r["name"] for r in c.execute("PRAGMA table_info(user)")}
+    assert c.execute("SELECT first_name FROM user WHERE email='old@x.com'").fetchone()[0] == "Old"
+    c.close()

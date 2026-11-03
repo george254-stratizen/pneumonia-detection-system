@@ -17,6 +17,8 @@ _ROOT = Path(__file__).resolve().parents[1]
 _override = os.environ.get("PNEUMONIA_DB")
 DB_PATH = (_ROOT / _override) if _override else _ROOT / "data" / "pneumonia.db"
 
+GENDERS = ["Female", "Male"]
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS role (
     role_id     INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,6 +31,7 @@ CREATE TABLE IF NOT EXISTS user (
     role_id    INTEGER NOT NULL REFERENCES role(role_id),
     first_name VARCHAR NOT NULL,
     last_name  VARCHAR NOT NULL,
+    gender     VARCHAR CHECK (gender IN ('Female', 'Male')),
     email      VARCHAR NOT NULL UNIQUE,
     password   VARCHAR NOT NULL,          -- salted hash, never plain text
     phone_no   VARCHAR,
@@ -160,6 +163,11 @@ def init_db(db_path=DB_PATH) -> None:
     conn = get_connection(db_path)
     try:
         conn.executescript(SCHEMA)
+        # Upgrade an older database in place (CREATE TABLE IF NOT EXISTS never changes existing tables)
+        user_cols = {r["name"] for r in conn.execute("PRAGMA table_info(user)")}
+        if "gender" not in user_cols:
+            conn.execute("ALTER TABLE user ADD COLUMN gender VARCHAR "
+                         "CHECK (gender IN ('Female', 'Male', 'Other'))")
         conn.executemany(
             "INSERT OR IGNORE INTO role (role_name, description) VALUES (?, ?)",
             [("Administrator", "Manages users and views system logs"),

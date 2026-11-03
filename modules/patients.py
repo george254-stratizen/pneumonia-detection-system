@@ -8,9 +8,7 @@ No Streamlit code here so it can be unit-tested.
 from datetime import date, datetime
 
 from modules.auth import log_action
-from modules.database import DB_PATH, get_connection
-
-GENDERS = ["Female", "Male"]
+from modules.database import DB_PATH, GENDERS, get_connection
 
 
 def _validate(first_name, last_name, date_of_birth, gender):

@@ -81,3 +81,19 @@ def test_list_users_and_logs(path):
     assert len(users) == 2 and users[1]["department"] == "ER"
     logs = get_logs(db_path=path)
     assert logs[0]["action"] == "CREATE_USER" and logs[0]["date_time"]
+
+
+def test_create_user_with_gender_and_second_admin(path):
+    first = create_user("Ann", "Admin", "ann@x.com", "password1", ADMIN, gender="Female", db_path=path)
+    second = create_user("Bob", "Admin", "bob@x.com", "password1", ADMIN, gender="Male", db_path=path)
+    assert authenticate("bob@x.com", "password1", db_path=path)["role"] == ADMIN
+    users = {u["email"]: u for u in list_users(db_path=path)}
+    assert users["ann@x.com"]["gender"] == "Female" and users["bob@x.com"]["role_name"] == ADMIN
+    c = get_connection(path)
+    assert c.execute("SELECT COUNT(*) FROM admin").fetchone()[0] == 2
+    c.close()
+
+
+def test_invalid_gender_rejected(path):
+    with pytest.raises(ValueError):
+        create_user("A", "B", "a@b.com", "password1", PROVIDER, gender="Robot", db_path=path)

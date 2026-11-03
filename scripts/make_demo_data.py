@@ -39,14 +39,13 @@ if DEMO_DB.exists():
     DEMO_DB.unlink()
 init_db(DEMO_DB)
 
-create_user("Demo", "Admin", "admin@demo.com", PASSWORD, ADMIN, db_path=DEMO_DB)
+create_user("Demo", "Admin", "admin@demo.com", PASSWORD, ADMIN, gender="Other", db_path=DEMO_DB)
 providers = []
-for i, (f, l, dept) in enumerate([("Grace", "Wambui", "Paediatrics"),
-                                  ("Peter", "Otieno", "Outpatient"),
-                                  ("Mary", "Chebet", "Radiology")], start=1):
+for i, (f, l, g, dept) in enumerate([("Grace", "Wambui", "Female", "Paediatrics"),
+                                     ("Peter", "Otieno", "Male", "Outpatient"),
+                                     ("Mary", "Chebet", "Female", "Radiology")], start=1):
     providers.append(create_user(f, l, f"provider{i}@demo.com", PASSWORD, PROVIDER,
-                                 license_number=f"DEMO-{i:03d}", profession="Clinician",
-                                 department=dept, db_path=DEMO_DB))
+                                 gender=g, department=dept, db_path=DEMO_DB))
 
 patients = []
 for i in range(40):

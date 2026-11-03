@@ -3,32 +3,39 @@ import sqlite3
 import pandas as pd
 import streamlit as st
 
-from modules.auth import PROVIDER, create_user, list_users, set_user_active
+from modules.auth import ADMIN, PROVIDER, create_user, list_users, set_user_active
+from modules.database import GENDERS
 
 admin = st.session_state["user"]
+if admin["role"] != ADMIN:
+    st.error("Only administrators can manage users.")
+    st.stop()
+
 st.title("👥 User Management")
 
-# ---- add provider ----
-with st.expander("➕ Add healthcare provider", expanded=False):
-    with st.form("add_provider", clear_on_submit=True):
+# ---- add user ----
+with st.expander("➕ Add user", expanded=False):
+    role = st.selectbox("Role", [PROVIDER, ADMIN], key="new_user_role")
+    with st.form("add_user", clear_on_submit=True):
         c1, c2 = st.columns(2)
         first = c1.text_input("First name")
         last = c2.text_input("Last name")
-        email = c1.text_input("Email")
+        gender = c1.selectbox("Gender", ["Select..."] + GENDERS)
         phone = c2.text_input("Phone")
-        license_no = c1.text_input("License number")
-        profession = c2.text_input("Profession (e.g. Clinician, Radiographer)")
-        department = c1.text_input("Department")
+        email = c1.text_input("Email")
         password = c2.text_input("Temporary password (min 8 chars)", type="password")
+        department = c1.text_input("Department (optional)") if role == PROVIDER else None
         if st.form_submit_button("Create account", type="primary"):
-            if not (first and last and email and password):
+            if not (first.strip() and last.strip() and email.strip() and password):
                 st.error("First name, last name, email and password are required.")
+            elif gender == "Select...":
+                st.error("Please select a gender.")
             else:
                 try:
-                    create_user(first, last, email, password, PROVIDER, phone_no=phone,
-                                license_number=license_no, profession=profession,
-                                department=department)
-                    st.success(f"Account created for {first} {last}.")
+                    create_user(first.strip(), last.strip(), email, password, role,
+                                phone_no=phone or None, gender=gender,
+                                department=(department or None))
+                    st.success(f"Account created for {first} {last} as {role}.")
                 except sqlite3.IntegrityError:
                     st.error("That email is already registered.")
                 except ValueError as e:
@@ -39,7 +46,10 @@ users = list_users()
 df = pd.DataFrame(users)
 df["status"] = df["is_active"].map({1: "Active", 0: "Inactive"})
 df["name"] = df["first_name"] + " " + df["last_name"]
-st.dataframe(df[["user_id", "name", "email", "role_name", "department", "status"]],
+df["gender"] = df["gender"].fillna("-")
+df["department"] = df["department"].fillna("-")
+st.dataframe(df[["user_id", "name", "gender", "email", "role_name", "department", "status"]]
+             .rename(columns={"role_name": "role"}),
              hide_index=True, width="stretch")
 
 # ---- activate / deactivate ----

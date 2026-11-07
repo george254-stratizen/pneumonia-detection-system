@@ -9,16 +9,17 @@ at all it must pick one, so a random screenshot can come back as "Normal".
 
 Limits: this is a set of simple image-statistics rules. It will not catch a grayscale picture
 of something else that looks X-ray-like (e.g. a knee X-ray or a black-and-white photo).
-Thresholds are checked against your real X-rays with scripts/calibrate_image_check.py.
+Thresholds were calibrated on the real test X-rays with scripts/calibrate_image_check.py
+(re-run it if you change them).
 """
 
 import numpy as np
 from PIL import Image
 
 MIN_SIDE = 128                  # pixels
-ASPECT_RANGE = (0.5, 2.0)       # width / height
+ASPECT_RANGE = (0.5, 3.5)       # width / height (real X-rays in the dataset reach about 2.6)
 MAX_COLOUR_SPREAD = 15.0        # mean (max channel - min channel), 0-255. X-rays are grey.
-MAX_FLAT_FRACTION = 0.35        # share of pixels with the single most common grey level
+MAX_FLAT_FRACTION = 0.45        # share of pixels with the single most common grey level (real X-rays: up to ~0.30)
 MIN_ENTROPY = 5.0               # bits. Flat screenshots/documents score low, X-rays high.
 
 

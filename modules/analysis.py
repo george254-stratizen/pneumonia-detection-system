@@ -91,8 +91,7 @@ def analyze_xray(patient_id, user_id, file_bytes, original_name, engine,
         if check_image:
             ok, reasons = check_chest_xray(original)
             if not ok:
-                raise ValueError("This does not look like a chest X-ray (" + "; ".join(reasons) +
-                                 "). Please upload a chest X-ray image.")
+                raise ValueError(" Please upload a chest X-ray image.")
 
         cur = conn.execute(
             "INSERT INTO x_ray_image (patient_id, file_name, file_path, file_type, uploaded_by) "

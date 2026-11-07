@@ -30,9 +30,18 @@ class FakeEngine:
 
 
 def png():
-    b = io.BytesIO()
-    Image.new("L", (64, 64), 128).save(b, format="PNG")
-    return b.getvalue()
+    return _xray_like_bytes()
+
+def _xray_like_bytes():
+    rng = np.random.default_rng(0)
+    h, w = 560, 480
+    yy, xx = np.mgrid[0:h, 0:w]
+    base = 90 + 90 * np.exp(-(((xx - w / 2) / (w / 3)) ** 2 + ((yy - h / 2) / (h / 3)) ** 2))
+    arr = np.clip(base + rng.normal(0, 18, (h, w)), 0, 255).astype(np.uint8)
+    buf = io.BytesIO()
+    Image.fromarray(arr, "L").save(buf, format="PNG")
+    return buf.getvalue()
+
 
 
 @pytest.fixture

@@ -29,9 +29,18 @@ class FakeEngine:
 
 
 def png_bytes():
+    return _xray_like_bytes()
+
+def _xray_like_bytes():
+    rng = np.random.default_rng(0)
+    h, w = 560, 480
+    yy, xx = np.mgrid[0:h, 0:w]
+    base = 90 + 90 * np.exp(-(((xx - w / 2) / (w / 3)) ** 2 + ((yy - h / 2) / (h / 3)) ** 2))
+    arr = np.clip(base + rng.normal(0, 18, (h, w)), 0, 255).astype(np.uint8)
     buf = io.BytesIO()
-    Image.new("L", (64, 64), 128).save(buf, format="PNG")
+    Image.fromarray(arr, "L").save(buf, format="PNG")
     return buf.getvalue()
+
 
 
 @pytest.fixture
@@ -87,6 +96,17 @@ def test_failure_midway_leaves_nothing_behind(ctx):
     with pytest.raises(RuntimeError):
         analyze_xray(pid, uid, png_bytes(), "s.png", FakeEngine(fail_at="gradcam"),
                      db_path=db, upload_dir=up)
+    for t in ("x_ray_image", "processing_module", "result", "grad_cam_heatmap", "diagnosis_record"):
+        assert count(db, t) == 0
+    assert not any(p.is_file() for p in up.rglob("*"))
+
+
+def test_non_xray_screenshot_is_rejected_and_nothing_saved(ctx):
+    db, uid, pid, up = ctx
+    shot = Image.new("RGB", (1280, 720), (255, 255, 255))
+    buf = io.BytesIO(); shot.save(buf, format="PNG")
+    with pytest.raises(ValueError, match="does not look like a chest X-ray"):
+        analyze_xray(pid, uid, buf.getvalue(), "screenshot.png", FakeEngine(), db_path=db, upload_dir=up)
     for t in ("x_ray_image", "processing_module", "result", "grad_cam_heatmap", "diagnosis_record"):
         assert count(db, t) == 0
     assert not any(p.is_file() for p in up.rglob("*"))

@@ -18,6 +18,7 @@ from PIL import Image, UnidentifiedImageError
 
 from modules.auth import log_action
 from modules.database import DB_PATH, get_connection
+from modules.image_check import check_chest_xray
 
 ROOT = Path(__file__).resolve().parents[1]
 ALLOWED_EXT = {".png", ".jpg", ".jpeg"}
@@ -56,7 +57,7 @@ def _rel(path: Path) -> str:
 
 
 def analyze_xray(patient_id, user_id, file_bytes, original_name, engine,
-                 db_path=DB_PATH, upload_dir=ROOT / "uploads"):
+                 db_path=DB_PATH, upload_dir=ROOT / "uploads", check_image=True):
     """Returns a dict describing the saved result. Raises ValueError for bad input.
     If anything fails midway, no database rows or files are left behind."""
     ext = Path(original_name).suffix.lower()
@@ -87,6 +88,11 @@ def analyze_xray(patient_id, user_id, file_bytes, original_name, engine,
                 im.verify()
         except (UnidentifiedImageError, OSError):
             raise ValueError("That file is not a readable image.")
+        if check_image:
+            ok, reasons = check_chest_xray(original)
+            if not ok:
+                raise ValueError("This does not look like a chest X-ray (" + "; ".join(reasons) +
+                                 "). Please upload a chest X-ray image.")
 
         cur = conn.execute(
             "INSERT INTO x_ray_image (patient_id, file_name, file_path, file_type, uploaded_by) "

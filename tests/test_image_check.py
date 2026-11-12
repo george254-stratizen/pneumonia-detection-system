@@ -34,6 +34,10 @@ def test_rgb_saved_grayscale_xray_accepted():
     assert check_chest_xray(xray_like().convert("RGB"))[0]       # many X-ray JPEGs are stored as RGB
 
 
+def test_wide_real_world_xray_shape_accepted():
+    assert check_chest_xray(xray_like(1300, 500))[0]            # aspect 2.6, seen in the real dataset
+
+
 def test_path_input_works(tmp_path):
     p = tmp_path / "x.png"
     xray_like().save(p)

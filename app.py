@@ -17,7 +17,7 @@ sys.path.append(str(Path(__file__).resolve().parent))
 
 import streamlit as st
 
-from modules.auth import ADMIN, authenticate, log_action
+from modules.auth import ADMIN, LOCKOUT_MINUTES, AccountLocked, authenticate, log_action
 from modules.database import DB_PATH, init_db
 
 st.set_page_config(page_title="Pneumonia Detection System", page_icon="🫁", layout="centered")
@@ -33,7 +33,12 @@ def login_page():
         submitted = st.form_submit_button("Log in", type="primary")
     st.caption("Forgot password? Contact your administrator.")
     if submitted:
-        user = authenticate(email, password)
+        try:
+            user = authenticate(email, password)
+        except AccountLocked as e:
+            st.error(f"Too many failed attempts. This account is locked for {e.minutes_left} more "
+                     f"minute(s). Please try again later or contact your administrator.")
+            return
         if user:
             st.session_state["user"] = user
             st.rerun()

@@ -69,25 +69,73 @@ def create_user(first_name, last_name, email, password, role_name,
     return uid
 
 
+MAX_FAILED_ATTEMPTS = 5
+LOCKOUT_MINUTES = 15
+
+
+class AccountLocked(Exception):
+    """Raised by authenticate() while an account is locked after too many wrong passwords."""
+
+    def __init__(self, minutes_left):
+        self.minutes_left = minutes_left
+        super().__init__(f"Account locked for {minutes_left} more minute(s).")
+
+
 def authenticate(email, password, db_path=DB_PATH):
-    """Returns a dict {user_id, name, email, role} on success, else None.
-    Deactivated accounts cannot log in."""
+    """Returns a dict {user_id, name, email, role, must_change_password} on success, else None.
+    Deactivated accounts cannot log in. After MAX_FAILED_ATTEMPTS wrong passwords in a row the
+    account is locked for LOCKOUT_MINUTES (even the right password is refused meanwhile) and
+    AccountLocked is raised."""
     email = (email or "").strip().lower()
     conn = get_connection(db_path)
     try:
         row = conn.execute(
-            "SELECT u.user_id, u.first_name, u.last_name, u.email, u.password, "
-            "u.is_active, u.must_change_password, r.role_name FROM user u JOIN role r ON r.role_id = u.role_id "
-            "WHERE u.email = ?", (email,)).fetchone()
+            "SELECT u.user_id, u.first_name, u.last_name, u.email, u.password, u.is_active, "
+            "u.must_change_password, u.failed_attempts, r.role_name, "
+            "CASE WHEN u.locked_until IS NOT NULL AND u.locked_until > datetime('now') "
+            "THEN CAST((julianday(u.locked_until) - julianday('now')) * 1440 AS INTEGER) + 1 "
+            "ELSE 0 END AS minutes_locked "
+            "FROM user u JOIN role r ON r.role_id = u.role_id WHERE u.email = ?", (email,)).fetchone()
+
+        if row is not None and row["minutes_locked"] > 0:            # locked: refuse without checking
+            minutes = row["minutes_locked"]
+            conn.close()
+            log_action("LOGIN_BLOCKED", f"Locked account {email}", row["user_id"], db_path)
+            raise AccountLocked(minutes)
+
+        if row is None or not verify_password(password or "", row["password"]):
+            locked_now = False
+            if row is not None:
+                attempts = row["failed_attempts"] + 1
+                if attempts >= MAX_FAILED_ATTEMPTS:
+                    conn.execute("UPDATE user SET failed_attempts = 0, "
+                                 "locked_until = datetime('now', ?) WHERE user_id = ?",
+                                 (f"+{LOCKOUT_MINUTES} minutes", row["user_id"]))
+                    locked_now = True
+                else:
+                    conn.execute("UPDATE user SET failed_attempts = ? WHERE user_id = ?",
+                                 (attempts, row["user_id"]))
+                conn.commit()
+            conn.close()
+            log_action("LOGIN_FAILED", f"Failed login for {email}",
+                       row["user_id"] if row is not None else None, db_path)
+            if locked_now:
+                log_action("ACCOUNT_LOCKED",
+                           f"Locked for {LOCKOUT_MINUTES} minutes after {MAX_FAILED_ATTEMPTS} failed logins",
+                           row["user_id"], db_path)
+                raise AccountLocked(LOCKOUT_MINUTES)
+            return None
+
+        if not row["is_active"]:
+            conn.close()
+            log_action("LOGIN_BLOCKED", f"Deactivated account {email}", row["user_id"], db_path)
+            return None
+
+        conn.execute("UPDATE user SET failed_attempts = 0, locked_until = NULL WHERE user_id = ?",
+                     (row["user_id"],))
+        conn.commit()
     finally:
         conn.close()
-
-    if row is None or not verify_password(password or "", row["password"]):
-        log_action("LOGIN_FAILED", f"Failed login for {email}", db_path=db_path)
-        return None
-    if not row["is_active"]:
-        log_action("LOGIN_BLOCKED", f"Deactivated account {email}", row["user_id"], db_path)
-        return None
 
     log_action("LOGIN", "User logged in", row["user_id"], db_path)
     return {"user_id": row["user_id"],
@@ -95,6 +143,22 @@ def authenticate(email, password, db_path=DB_PATH):
             "email": row["email"],
             "role": row["role_name"],
             "must_change_password": bool(row["must_change_password"])}
+
+
+def unlock_user(user_id, acting_user_id, db_path=DB_PATH):
+    """An administrator lifts a lockout early."""
+    conn = get_connection(db_path)
+    try:
+        if conn.execute("SELECT 1 FROM admin WHERE user_id = ?", (acting_user_id,)).fetchone() is None:
+            raise ValueError("Only administrators can unlock accounts.")
+        cur = conn.execute("UPDATE user SET failed_attempts = 0, locked_until = NULL WHERE user_id = ?",
+                           (user_id,))
+        if cur.rowcount == 0:
+            raise ValueError("User not found.")
+        conn.commit()
+    finally:
+        conn.close()
+    log_action("UNLOCK_USER", f"Unlocked user {user_id}", acting_user_id, db_path)
 
 
 # ---------- passwords ----------
@@ -143,8 +207,8 @@ def reset_password(target_user_id, acting_user_id, db_path=DB_PATH):
         if conn.execute("SELECT 1 FROM user WHERE user_id = ?", (target_user_id,)).fetchone() is None:
             raise ValueError("User not found.")
         temp = generate_temp_password()
-        conn.execute("UPDATE user SET password = ?, must_change_password = 1 WHERE user_id = ?",
-                     (hash_password(temp), target_user_id))
+        conn.execute("UPDATE user SET password = ?, must_change_password = 1, failed_attempts = 0, "
+                     "locked_until = NULL WHERE user_id = ?", (hash_password(temp), target_user_id))
         conn.commit()
     finally:
         conn.close()
@@ -159,7 +223,8 @@ def list_users(db_path=DB_PATH):
     try:
         return [dict(r) for r in conn.execute(
             "SELECT u.user_id, u.first_name, u.last_name, u.gender, u.email, u.phone_no, "
-            "r.role_name, u.is_active, hp.department "
+            "r.role_name, u.is_active, hp.department, "
+            "(u.locked_until IS NOT NULL AND u.locked_until > datetime('now')) AS is_locked "
             "FROM user u JOIN role r ON r.role_id = u.role_id "
             "LEFT JOIN healthcare_provider hp ON hp.user_id = u.user_id "
             "ORDER BY u.user_id")]

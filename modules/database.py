@@ -19,6 +19,12 @@ DB_PATH = (_ROOT / _override) if _override else _ROOT / "data" / "pneumonia.db"
 
 GENDERS = ["Female", "Male"]
 
+# Columns added to `user` after the first version. init_db adds any that an older database lacks.
+USER_COLUMNS_ADDED_LATER = {
+    "gender": "VARCHAR CHECK (gender IN ('Female', 'Male', 'Other'))",
+    "must_change_password": "INTEGER NOT NULL DEFAULT 0 CHECK (must_change_password IN (0, 1))",
+}
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS role (
     role_id     INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,11 +37,12 @@ CREATE TABLE IF NOT EXISTS user (
     role_id    INTEGER NOT NULL REFERENCES role(role_id),
     first_name VARCHAR NOT NULL,
     last_name  VARCHAR NOT NULL,
-    gender     VARCHAR CHECK (gender IN ('Female', 'Male')),
+    gender     VARCHAR CHECK (gender IN ('Female', 'Male', 'Other')),
     email      VARCHAR NOT NULL UNIQUE,
     password   VARCHAR NOT NULL,          -- salted hash, never plain text
     phone_no   VARCHAR,
-    is_active  INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1))
+    is_active  INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    must_change_password INTEGER NOT NULL DEFAULT 0 CHECK (must_change_password IN (0, 1))
 );
 
 CREATE TABLE IF NOT EXISTS admin (
@@ -165,9 +172,9 @@ def init_db(db_path=DB_PATH) -> None:
         conn.executescript(SCHEMA)
         # Upgrade an older database in place (CREATE TABLE IF NOT EXISTS never changes existing tables)
         user_cols = {r["name"] for r in conn.execute("PRAGMA table_info(user)")}
-        if "gender" not in user_cols:
-            conn.execute("ALTER TABLE user ADD COLUMN gender VARCHAR "
-                         "CHECK (gender IN ('Female', 'Male', 'Other'))")
+        for column, ddl in USER_COLUMNS_ADDED_LATER.items():
+            if column not in user_cols:
+                conn.execute(f"ALTER TABLE user ADD COLUMN {column} {ddl}")
         conn.executemany(
             "INSERT OR IGNORE INTO role (role_name, description) VALUES (?, ?)",
             [("Administrator", "Manages users and views system logs"),

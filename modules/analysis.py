@@ -34,6 +34,8 @@ class RealEngine:
         self._prediction = prediction
         self._gradcam = gradcam
         self.model = model or prediction.load_model()
+        from modules.xray_gate import load_gate
+        self.gate = load_gate()          # None if the gate files are missing: the check is skipped
 
     def prepare_image(self, path):
         return self._prediction.prepare_image(path)
@@ -93,6 +95,15 @@ def analyze_xray(patient_id, user_id, file_bytes, original_name, engine,
             if not ok:
                 log_action("IMAGE_REJECTED", f"{original_name}: " + "; ".join(reasons), user_id, db_path)
                 raise ValueError("Please upload a chest X-ray image.")
+            gate = getattr(engine, "gate", None)
+            if gate is not None:
+                with Image.open(original) as im:
+                    gate_ok, gate_p = gate.check(im)
+                if not gate_ok:
+                    log_action("IMAGE_REJECTED",
+                               f"{original_name}: classifier says not a chest X-ray (p={gate_p:.2f})",
+                               user_id, db_path)
+                    raise ValueError("Please upload a chest X-ray image.")
 
         cur = conn.execute(
             "INSERT INTO x_ray_image (patient_id, file_name, file_path, file_type, uploaded_by) "

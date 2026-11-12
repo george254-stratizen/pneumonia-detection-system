@@ -1,0 +1,6 @@
+{
+  "arch": "resnet18",
+  "size": 224,
+  "threshold": 0.5,
+  "real_xray_accept_rate": 1.0
+}

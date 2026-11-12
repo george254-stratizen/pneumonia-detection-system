@@ -114,3 +114,36 @@ def test_non_xray_screenshot_is_rejected_and_nothing_saved(ctx):
     logged = c.execute("SELECT description FROM system_log WHERE action = 'IMAGE_REJECTED'").fetchone()
     c.close()
     assert logged and "screenshot.png" in logged[0]            # the reason is kept for the admin
+
+
+class _StubGate:
+    def __init__(self, ok, p): self.ok, self.p = ok, p
+    def check(self, img): return self.ok, self.p
+
+
+def _png_bytes():
+    rng = np.random.default_rng(0)
+    arr = rng.integers(40, 200, (256, 256), dtype=np.uint8)
+    buf = io.BytesIO(); Image.fromarray(arr).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def test_gate_rejects_and_logs_probability(ctx):
+    db, uid, pid, up = ctx
+    eng = FakeEngine(); eng.gate = _StubGate(False, 0.03)
+    with pytest.raises(ValueError, match="Please upload a chest X-ray image"):
+        analyze_xray(pid, uid, _png_bytes(), "knee.png", eng, db_path=db, upload_dir=up,
+                     check_image=True)
+    assert count(db, "x_ray_image") == 0
+    assert not any(p.is_file() for p in up.rglob("*"))
+    c = get_connection(db)
+    logged = c.execute("SELECT description FROM system_log WHERE action='IMAGE_REJECTED'").fetchone()
+    c.close()
+    assert logged and "knee.png" in logged[0] and "0.03" in logged[0]
+
+
+def test_gate_accepts_real_xray(ctx):
+    db, uid, pid, up = ctx
+    eng = FakeEngine(); eng.gate = _StubGate(True, 0.98)
+    analyze_xray(pid, uid, _png_bytes(), "ok.png", eng, db_path=db, upload_dir=up, check_image=True)
+    assert count(db, "result") == 1

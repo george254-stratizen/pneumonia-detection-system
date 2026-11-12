@@ -126,3 +126,18 @@ def test_old_database_is_upgraded_in_place(tmp_path):
     assert "gender" in {r["name"] for r in c.execute("PRAGMA table_info(user)")}
     assert c.execute("SELECT first_name FROM user WHERE email='old@x.com'").fetchone()[0] == "Old"
     c.close()
+
+
+def test_must_change_password_column_added_to_old_database(tmp_path):
+    path = tmp_path / "old2.db"
+    init_db(path)
+    c = get_connection(path)
+    c.execute("INSERT INTO user (role_id, first_name, last_name, email, password) "
+              "VALUES (1, 'Old', 'User', 'old@x.com', 'x')")
+    c.commit()
+    c.execute("ALTER TABLE user DROP COLUMN must_change_password")      # simulate the older schema
+    c.commit(); c.close()
+    init_db(path)
+    c = get_connection(path)
+    assert c.execute("SELECT must_change_password FROM user WHERE email='old@x.com'").fetchone()[0] == 0
+    c.close()

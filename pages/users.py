@@ -3,7 +3,8 @@ import sqlite3
 import pandas as pd
 import streamlit as st
 
-from modules.auth import ADMIN, PROVIDER, create_user, list_users, reset_password, set_user_active
+from modules.auth import (ADMIN, PROVIDER, create_user, list_users, reset_password,
+                          set_user_active, unlock_user)
 from modules.database import GENDERS
 
 admin = st.session_state["user"]
@@ -43,7 +44,8 @@ with st.expander("➕ Add user", expanded=False):
 # ---- list users ----
 users = list_users()
 df = pd.DataFrame(users)
-df["status"] = df["is_active"].map({1: "Active", 0: "Inactive"})
+df["status"] = [("Inactive" if not r.is_active else "Locked" if r.is_locked else "Active")
+                for r in df.itertuples()]
 df["name"] = df["first_name"] + " " + df["last_name"]
 df["gender"] = df["gender"].fillna("-")
 df["department"] = df["department"].fillna("-")
@@ -66,9 +68,27 @@ if st.button(f"{label} user"):
     except ValueError as e:
         st.error(str(e))
 
+# ---- unlock (only shown when someone is locked out) ----
+locked = [x for x in users if x["is_locked"]]
+if locked:
+    st.subheader("Locked accounts")
+    st.caption("Locked after 5 wrong passwords. They unlock by themselves after 15 minutes, "
+               "or you can unlock them now.")
+    pick = st.selectbox("Locked user", [f"{x['first_name']} {x['last_name']} ({x['email']})" for x in locked],
+                        key="unlock_user")
+    if st.button("Unlock account"):
+        target_locked = locked[[f"{x['first_name']} {x['last_name']} ({x['email']})" for x in locked].index(pick)]
+        try:
+            unlock_user(target_locked["user_id"], admin["user_id"])
+            st.success("Account unlocked.")
+            st.rerun()
+        except ValueError as e:
+            st.error(str(e))
+
 # ---- reset password ----
 st.subheader("Reset password")
-st.caption("Use this when someone forgets their password. They must choose a new one at next login.")
+st.caption("Use this when someone forgets their password. They must choose a new one at next login. "
+           "It also unlocks the account if it was locked.")
 reset_choice = st.selectbox("Select user", list(options), key="reset_user")
 if st.button("Reset password"):
     reset_target = options[reset_choice]

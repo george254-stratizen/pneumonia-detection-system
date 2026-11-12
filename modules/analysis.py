@@ -91,7 +91,8 @@ def analyze_xray(patient_id, user_id, file_bytes, original_name, engine,
         if check_image:
             ok, reasons = check_chest_xray(original)
             if not ok:
-                raise ValueError(" Please upload a chest X-ray image.")
+                log_action("IMAGE_REJECTED", f"{original_name}: " + "; ".join(reasons), user_id, db_path)
+                raise ValueError("Please upload a chest X-ray image.")
 
         cur = conn.execute(
             "INSERT INTO x_ray_image (patient_id, file_name, file_path, file_type, uploaded_by) "

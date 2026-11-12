@@ -54,18 +54,27 @@ user = st.session_state.get("user")
 if user is None:
     st.navigation([st.Page(login_page, title="Login")], position="hidden").run()
 else:
-    pages = [st.Page("pages/dashboard.py", title="Dashboard", icon="🏠", default=True)]
-    if user["role"] == ADMIN:
-        pages += [
-            st.Page("pages/users.py", title="User Management", icon="👥"),
-            st.Page("pages/logs.py", title="System Logs", icon="📜"),
-        ]
+    account = st.Page("pages/account.py", title="My Account", icon="🔑")
+    if user.get("must_change_password"):
+        # An administrator set this password: the user must replace it before using anything else.
+        pages = [account]
     else:
-        pages += [
-            st.Page("pages/patient_management.py", title="Patients", icon="🧑‍⚕️"),
-            st.Page("pages/upload_xray.py", title="Upload X-ray", icon="🩻"),
-            st.Page("pages/history.py", title="Patient History", icon="🗂️"),
-        ]
+        dashboard = st.Page("pages/dashboard.py", title="Dashboard", icon="🏠", default=True)
+        pages = [dashboard]
+        if user["role"] == ADMIN:
+            pages += [
+                st.Page("pages/users.py", title="User Management", icon="👥"),
+                st.Page("pages/logs.py", title="System Logs", icon="📜"),
+            ]
+        else:
+            pages += [
+                st.Page("pages/patient_management.py", title="Patients", icon="🧑‍⚕️"),
+                st.Page("pages/upload_xray.py", title="Upload X-ray", icon="🩻"),
+                st.Page("pages/history.py", title="Patient History", icon="🗂️"),
+            ]
+        pages.append(account)
+    if not user.get("must_change_password") and st.session_state.pop("goto_dashboard", False):
+        st.switch_page(dashboard)
     with st.sidebar:
         st.write(f"**{user['name']}**")
         st.caption(user["role"])

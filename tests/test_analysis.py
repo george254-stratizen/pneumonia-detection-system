@@ -105,8 +105,12 @@ def test_non_xray_screenshot_is_rejected_and_nothing_saved(ctx):
     db, uid, pid, up = ctx
     shot = Image.new("RGB", (1280, 720), (255, 255, 255))
     buf = io.BytesIO(); shot.save(buf, format="PNG")
-    with pytest.raises(ValueError, match="does not look like a chest X-ray"):
+    with pytest.raises(ValueError, match="Please upload a chest X-ray image"):
         analyze_xray(pid, uid, buf.getvalue(), "screenshot.png", FakeEngine(), db_path=db, upload_dir=up)
     for t in ("x_ray_image", "processing_module", "result", "grad_cam_heatmap", "diagnosis_record"):
         assert count(db, t) == 0
     assert not any(p.is_file() for p in up.rglob("*"))
+    c = get_connection(db)
+    logged = c.execute("SELECT description FROM system_log WHERE action = 'IMAGE_REJECTED'").fetchone()
+    c.close()
+    assert logged and "screenshot.png" in logged[0]            # the reason is kept for the admin

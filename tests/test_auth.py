@@ -97,3 +97,73 @@ def test_create_user_with_gender_and_second_admin(path):
 def test_invalid_gender_rejected(path):
     with pytest.raises(ValueError):
         create_user("A", "B", "a@b.com", "password1", PROVIDER, gender="Robot", db_path=path)
+
+
+# ---------- password change and reset ----------
+from modules.auth import change_password, reset_password, generate_temp_password
+
+
+def test_user_changes_own_password(path):
+    uid = create_user("Jo", "Doc", "jo@x.com", "password1", PROVIDER, db_path=path)
+    change_password(uid, "password1", "newpass99", db_path=path)
+    assert authenticate("jo@x.com", "password1", db_path=path) is None
+    assert authenticate("jo@x.com", "newpass99", db_path=path) is not None
+
+
+def test_change_password_rules(path):
+    uid = create_user("Jo", "Doc", "jo@x.com", "password1", PROVIDER, db_path=path)
+    with pytest.raises(ValueError, match="incorrect"):
+        change_password(uid, "wrong-one", "newpass99", db_path=path)
+    with pytest.raises(ValueError, match="at least 8"):
+        change_password(uid, "password1", "short", db_path=path)
+    with pytest.raises(ValueError, match="different"):
+        change_password(uid, "password1", "password1", db_path=path)
+    assert authenticate("jo@x.com", "password1", db_path=path) is not None   # unchanged
+
+
+def test_admin_reset_gives_working_temp_password_and_forces_change(path):
+    admin = create_user("Ann", "Admin", "ann@x.com", "password1", ADMIN, db_path=path)
+    jo = create_user("Jo", "Doc", "jo@x.com", "password1", PROVIDER, db_path=path)
+    assert authenticate("jo@x.com", "password1", db_path=path)["must_change_password"] is False
+    temp = reset_password(jo, admin, db_path=path)
+    assert len(temp) >= 8 and temp != "password1"
+    assert authenticate("jo@x.com", "password1", db_path=path) is None          # old one dead
+    user = authenticate("jo@x.com", temp, db_path=path)
+    assert user and user["must_change_password"] is True
+    change_password(jo, temp, "mynewpass1", db_path=path)                        # clears the flag
+    assert authenticate("jo@x.com", "mynewpass1", db_path=path)["must_change_password"] is False
+
+
+def test_reset_is_admin_only_and_not_for_self(path):
+    admin = create_user("Ann", "Admin", "ann@x.com", "password1", ADMIN, db_path=path)
+    jo = create_user("Jo", "Doc", "jo@x.com", "password1", PROVIDER, db_path=path)
+    li = create_user("Li", "Nurse", "li@x.com", "password1", PROVIDER, db_path=path)
+    with pytest.raises(ValueError, match="Only administrators"):
+        reset_password(li, jo, db_path=path)
+    with pytest.raises(ValueError, match="own account"):
+        reset_password(admin, admin, db_path=path)
+    with pytest.raises(ValueError, match="not found"):
+        reset_password(999, admin, db_path=path)
+    assert authenticate("li@x.com", "password1", db_path=path) is not None      # untouched
+
+
+def test_temp_passwords_are_random_and_readable():
+    a, b = generate_temp_password(), generate_temp_password()
+    assert a != b and len(a) == 10 and not set(a) & set("O0oIl1")
+
+
+def test_new_user_can_be_forced_to_change_password(path):
+    create_user("Jo", "Doc", "jo@x.com", "password1", PROVIDER, must_change_password=True, db_path=path)
+    assert authenticate("jo@x.com", "password1", db_path=path)["must_change_password"] is True
+
+
+def test_password_events_are_logged(path):
+    admin = create_user("Ann", "Admin", "ann@x.com", "password1", ADMIN, db_path=path)
+    jo = create_user("Jo", "Doc", "jo@x.com", "password1", PROVIDER, db_path=path)
+    with pytest.raises(ValueError):
+        change_password(jo, "wrong", "newpass99", db_path=path)
+    temp = reset_password(jo, admin, db_path=path)
+    change_password(jo, temp, "newpass99", db_path=path)
+    actions = {l["action"] for l in get_logs(db_path=path)}
+    assert {"PASSWORD_CHANGE_FAILED", "PASSWORD_RESET", "PASSWORD_CHANGED"} <= actions
+    assert all(temp not in (l["description"] or "") for l in get_logs(db_path=path))   # never logged

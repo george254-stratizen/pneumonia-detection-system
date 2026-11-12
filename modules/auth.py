@@ -5,6 +5,9 @@ Login logic, user creation and activity logging.
 Kept free of Streamlit code so it can be unit-tested.
 """
 
+import secrets
+import string
+
 from modules.database import DB_PATH, GENDERS, get_connection, hash_password, verify_password
 from modules.validation import (email_error, name_error, password_error, phone_error,
                                 raise_if_errors, text_error)
@@ -27,7 +30,7 @@ def log_action(action, description="", user_id=None, db_path=DB_PATH):
 
 def create_user(first_name, last_name, email, password, role_name,
                 phone_no=None, gender=None, license_number=None, profession=None,
-                department=None, db_path=DB_PATH):
+                department=None, must_change_password=False, db_path=DB_PATH):
     """Creates a user (and the matching admin / healthcare_provider row). Returns user_id."""
     raise_if_errors([
         name_error(first_name, "First name"),
@@ -47,9 +50,10 @@ def create_user(first_name, last_name, email, password, role_name,
         if role is None:
             raise ValueError(f"Unknown role: {role_name}")
         cur = conn.execute(
-            "INSERT INTO user (role_id, first_name, last_name, gender, email, password, phone_no) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (role["role_id"], first_name, last_name, gender, email, hash_password(password), phone_no),
+            "INSERT INTO user (role_id, first_name, last_name, gender, email, password, phone_no, "
+            "must_change_password) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (role["role_id"], first_name, last_name, gender, email, hash_password(password), phone_no,
+             1 if must_change_password else 0),
         )
         uid = cur.lastrowid
         if role_name == ADMIN:
@@ -73,7 +77,7 @@ def authenticate(email, password, db_path=DB_PATH):
     try:
         row = conn.execute(
             "SELECT u.user_id, u.first_name, u.last_name, u.email, u.password, "
-            "u.is_active, r.role_name FROM user u JOIN role r ON r.role_id = u.role_id "
+            "u.is_active, u.must_change_password, r.role_name FROM user u JOIN role r ON r.role_id = u.role_id "
             "WHERE u.email = ?", (email,)).fetchone()
     finally:
         conn.close()
@@ -89,7 +93,63 @@ def authenticate(email, password, db_path=DB_PATH):
     return {"user_id": row["user_id"],
             "name": f"{row['first_name']} {row['last_name']}",
             "email": row["email"],
-            "role": row["role_name"]}
+            "role": row["role_name"],
+            "must_change_password": bool(row["must_change_password"])}
+
+
+# ---------- passwords ----------
+
+_TEMP_ALPHABET = "".join(c for c in string.ascii_letters + string.digits if c not in "O0oIl1")
+
+
+def generate_temp_password(length=10):
+    """Random temporary password, without look-alike characters (0/O, 1/l/I)."""
+    return "".join(secrets.choice(_TEMP_ALPHABET) for _ in range(length))
+
+
+def change_password(user_id, current_password, new_password, db_path=DB_PATH):
+    """A user changes their own password. Needs the current password."""
+    conn = get_connection(db_path)
+    try:
+        row = conn.execute("SELECT password FROM user WHERE user_id = ?", (user_id,)).fetchone()
+        if row is None:
+            raise ValueError("User not found.")
+        if not verify_password(current_password or "", row["password"]):
+            conn.close()
+            log_action("PASSWORD_CHANGE_FAILED", "Wrong current password", user_id, db_path)
+            raise ValueError("Current password is incorrect.")
+        raise_if_errors([
+            password_error(new_password),
+            "New password must be different from the current one."
+            if verify_password(new_password or "", row["password"]) else None,
+        ])
+        conn.execute("UPDATE user SET password = ?, must_change_password = 0 WHERE user_id = ?",
+                     (hash_password(new_password), user_id))
+        conn.commit()
+    finally:
+        conn.close()
+    log_action("PASSWORD_CHANGED", "User changed their password", user_id, db_path)
+
+
+def reset_password(target_user_id, acting_user_id, db_path=DB_PATH):
+    """An administrator sets a random temporary password for another user.
+    The user must choose a new one at next login. Returns the temporary password (show it once)."""
+    if target_user_id == acting_user_id:
+        raise ValueError("Use 'Change password' for your own account.")
+    conn = get_connection(db_path)
+    try:
+        if conn.execute("SELECT 1 FROM admin WHERE user_id = ?", (acting_user_id,)).fetchone() is None:
+            raise ValueError("Only administrators can reset passwords.")
+        if conn.execute("SELECT 1 FROM user WHERE user_id = ?", (target_user_id,)).fetchone() is None:
+            raise ValueError("User not found.")
+        temp = generate_temp_password()
+        conn.execute("UPDATE user SET password = ?, must_change_password = 1 WHERE user_id = ?",
+                     (hash_password(temp), target_user_id))
+        conn.commit()
+    finally:
+        conn.close()
+    log_action("PASSWORD_RESET", f"Reset password for user {target_user_id}", acting_user_id, db_path)
+    return temp
 
 
 # ---------- admin helpers ----------

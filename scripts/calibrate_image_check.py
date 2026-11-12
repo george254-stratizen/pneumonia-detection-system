@@ -6,7 +6,8 @@ Checks the "is this a chest X-ray?" filter against real images.
 
 First folder  = genuine chest X-rays  -> we want ~0% rejected.
 Second folder = anything that is NOT an X-ray (screenshots, photos...) -> we want ~100% rejected.
-Both folders are searched recursively. At most 400 images are sampled from each.
+Both folders are searched recursively. At most 1000 images are sampled from each
+(add  --limit 99999  to check every image).
 """
 
 import random
@@ -22,7 +23,7 @@ from modules.image_check import check_chest_xray, image_stats
 EXT = {".png", ".jpg", ".jpeg"}
 
 
-def scan(folder, limit=400):
+def scan(folder, limit=1000):
     files = [p for p in Path(folder).rglob("*") if p.suffix.lower() in EXT]
     random.seed(0)
     random.shuffle(files)
@@ -63,6 +64,12 @@ def summary(name, folder, want):
         print(f"  {k:14} min {v[0]:7.2f}   median {v[len(v)//2]:7.2f}   max {v[-1]:7.2f}")
 
 
-summary("REAL X-RAYS", sys.argv[1], "about 0% rejected")
-if len(sys.argv) > 2:
-    summary("NOT X-RAYS", sys.argv[2], "about 100% rejected")
+args = [a for a in sys.argv[1:] if not a.startswith("--")]
+LIMIT = int(sys.argv[sys.argv.index("--limit") + 1]) if "--limit" in sys.argv else 1000
+args = [a for a in args if a != str(LIMIT)]
+_scan = scan
+scan = lambda folder, limit=LIMIT: _scan(folder, limit)
+
+summary("REAL X-RAYS", args[0], "about 0% rejected")
+if len(args) > 1:
+    summary("NOT X-RAYS", args[1], "about 100% rejected")

@@ -23,6 +23,8 @@ GENDERS = ["Female", "Male"]
 USER_COLUMNS_ADDED_LATER = {
     "gender": "VARCHAR CHECK (gender IN ('Female', 'Male', 'Other'))",
     "must_change_password": "INTEGER NOT NULL DEFAULT 0 CHECK (must_change_password IN (0, 1))",
+    "failed_attempts": "INTEGER NOT NULL DEFAULT 0",
+    "locked_until": "DATETIME",
 }
 
 SCHEMA = """
@@ -42,7 +44,9 @@ CREATE TABLE IF NOT EXISTS user (
     password   VARCHAR NOT NULL,          -- salted hash, never plain text
     phone_no   VARCHAR,
     is_active  INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
-    must_change_password INTEGER NOT NULL DEFAULT 0 CHECK (must_change_password IN (0, 1))
+    must_change_password INTEGER NOT NULL DEFAULT 0 CHECK (must_change_password IN (0, 1)),
+    failed_attempts INTEGER NOT NULL DEFAULT 0,     -- wrong passwords in a row (resets on success)
+    locked_until DATETIME                            -- UTC; login blocked until this time
 );
 
 CREATE TABLE IF NOT EXISTS admin (

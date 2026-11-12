@@ -141,3 +141,20 @@ def test_must_change_password_column_added_to_old_database(tmp_path):
     c = get_connection(path)
     assert c.execute("SELECT must_change_password FROM user WHERE email='old@x.com'").fetchone()[0] == 0
     c.close()
+
+
+def test_lockout_columns_added_to_old_database(tmp_path):
+    path = tmp_path / "old3.db"
+    init_db(path)
+    c = get_connection(path)
+    c.execute("INSERT INTO user (role_id, first_name, last_name, email, password) "
+              "VALUES (1, 'Old', 'User', 'old@x.com', 'x')")
+    c.commit()
+    c.execute("ALTER TABLE user DROP COLUMN failed_attempts")
+    c.execute("ALTER TABLE user DROP COLUMN locked_until")
+    c.commit(); c.close()
+    init_db(path)
+    c = get_connection(path)
+    row = c.execute("SELECT failed_attempts, locked_until FROM user WHERE email='old@x.com'").fetchone()
+    assert row[0] == 0 and row[1] is None
+    c.close()

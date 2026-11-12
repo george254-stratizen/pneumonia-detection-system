@@ -167,3 +167,81 @@ def test_password_events_are_logged(path):
     actions = {l["action"] for l in get_logs(db_path=path)}
     assert {"PASSWORD_CHANGE_FAILED", "PASSWORD_RESET", "PASSWORD_CHANGED"} <= actions
     assert all(temp not in (l["description"] or "") for l in get_logs(db_path=path))   # never logged
+
+
+# ---------- lockout after repeated failed logins ----------
+from modules.auth import AccountLocked, unlock_user, LOCKOUT_MINUTES, MAX_FAILED_ATTEMPTS
+
+
+def wrong(path, email="jo@x.com", times=1):
+    for _ in range(times):
+        try:
+            authenticate(email, "not-the-password", db_path=path)
+        except AccountLocked:
+            pass
+
+
+def test_fifth_wrong_password_locks_the_account(path):
+    create_user("Jo", "Doc", "jo@x.com", "password1", PROVIDER, db_path=path)
+    for _ in range(MAX_FAILED_ATTEMPTS - 1):
+        assert authenticate("jo@x.com", "bad", db_path=path) is None       # attempts 1-4: just refused
+    with pytest.raises(AccountLocked) as e:
+        authenticate("jo@x.com", "bad", db_path=path)                      # attempt 5: locked
+    assert e.value.minutes_left == LOCKOUT_MINUTES
+
+
+def test_right_password_is_refused_while_locked(path):
+    create_user("Jo", "Doc", "jo@x.com", "password1", PROVIDER, db_path=path)
+    wrong(path, times=5)
+    with pytest.raises(AccountLocked) as e:
+        authenticate("jo@x.com", "password1", db_path=path)                # correct, but still blocked
+    assert 1 <= e.value.minutes_left <= LOCKOUT_MINUTES
+
+
+def test_success_resets_the_counter(path):
+    create_user("Jo", "Doc", "jo@x.com", "password1", PROVIDER, db_path=path)
+    wrong(path, times=4)
+    assert authenticate("jo@x.com", "password1", db_path=path) is not None   # resets to 0
+    wrong(path, times=4)                                                      # 4 more: still not locked
+    assert authenticate("jo@x.com", "password1", db_path=path) is not None
+
+
+def test_lock_expires_by_itself(path):
+    create_user("Jo", "Doc", "jo@x.com", "password1", PROVIDER, db_path=path)
+    wrong(path, times=5)
+    c = get_connection(path)
+    c.execute("UPDATE user SET locked_until = datetime('now', '-1 minutes')")    # pretend 15 min passed
+    c.commit(); c.close()
+    assert authenticate("jo@x.com", "password1", db_path=path) is not None
+
+
+def test_lock_is_per_account_and_unknown_emails_are_harmless(path):
+    create_user("Jo", "Doc", "jo@x.com", "password1", PROVIDER, db_path=path)
+    create_user("Li", "Nurse", "li@x.com", "password1", PROVIDER, db_path=path)
+    wrong(path, "jo@x.com", 5)
+    assert authenticate("li@x.com", "password1", db_path=path) is not None   # Li unaffected
+    for _ in range(10):
+        assert authenticate("nobody@x.com", "bad", db_path=path) is None      # never raises, never locks
+
+
+def test_admin_can_unlock_and_reset_also_unlocks(path):
+    admin = create_user("Ann", "Admin", "ann@x.com", "password1", ADMIN, db_path=path)
+    jo = create_user("Jo", "Doc", "jo@x.com", "password1", PROVIDER, db_path=path)
+    li = create_user("Li", "Nurse", "li@x.com", "password1", PROVIDER, db_path=path)
+    wrong(path, "jo@x.com", 5); wrong(path, "li@x.com", 5)
+    assert {u["email"]: u["is_locked"] for u in list_users(db_path=path)}["jo@x.com"] == 1
+    unlock_user(jo, admin, db_path=path)
+    assert authenticate("jo@x.com", "password1", db_path=path) is not None
+    temp = reset_password(li, admin, db_path=path)                           # reset lifts the lock too
+    assert authenticate("li@x.com", temp, db_path=path) is not None
+    with pytest.raises(ValueError, match="Only administrators"):
+        unlock_user(jo, jo, db_path=path)
+
+
+def test_lockout_is_logged(path):
+    create_user("Jo", "Doc", "jo@x.com", "password1", PROVIDER, db_path=path)
+    wrong(path, times=5)
+    with pytest.raises(AccountLocked):
+        authenticate("jo@x.com", "password1", db_path=path)
+    actions = [l["action"] for l in get_logs(db_path=path)]
+    assert "ACCOUNT_LOCKED" in actions and "LOGIN_BLOCKED" in actions

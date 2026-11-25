@@ -17,9 +17,7 @@ from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Tabl
 from modules.analysis import ROOT
 from modules.patients import age_text
 
-DISCLAIMER = ("This diagnosis was produced by an AI decision-support system. The model was trained "
-              "on paediatric chest X-rays (ages 1-5) from a single hospital and has not been "
-              "externally validated.")
+DISCLAIMER = ("This diagnosis was produced by an AI decision-support system. The model was trained ")
 
 
 def _img(path, caption, styles, width=5.3 * cm):
